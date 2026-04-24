@@ -1,0 +1,28 @@
+# ── Core web framework ────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+python-multipart>=0.0.9        # required by FastAPI for UploadFile / multipart
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+pyyaml>=6.0
+
+# ── Offline AI assistant (Phi-3 Mini GGUF) ───────────────────────────────────
+# Install the build that matches your hardware:
+#
+#   CPU only (default, works everywhere):
+#     pip install llama-cpp-python
+#
+#   CUDA (NVIDIA GPU — dramatically faster):
+#     CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+#
+#   Metal (Apple Silicon):
+#     CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+#
+# Model file required (place in models/):
+#   Phi-3-mini-4k-instruct-q4_k_m.gguf
+#   Download: https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf
+llama-cpp-python>=0.2.57
+
+# ── Windows Event Log live feed (optional — Windows only) ────────────────────
+pywin32>=306; sys_platform == "win32"

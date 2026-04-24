@@ -1,0 +1,158 @@
+"""Plain text report generator."""
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from src.reporting.base import BaseReport, ReportMetadata
+
+logger = logging.getLogger(__name__)
+
+
+class TextReport(BaseReport):
+    """Generate plain text format reports."""
+
+    def __init__(self, metadata: ReportMetadata, data: dict):
+        super().__init__(metadata)
+        self.data = data
+
+    def generate(self) -> str:
+        """Generate text report."""
+        session = self.data.get("session", {})
+        summary = self.data.get("summary", {})
+        alerts = self.data.get("alerts", [])
+        incidents = self.data.get("incidents", [])
+
+        # Compute integrity hash
+        integrity_hash = self.compute_integrity_hash("")
+
+        lines = []
+
+        # Header
+        lines.append("=" * 80)
+        lines.append(self.metadata.title.upper())
+        lines.append("=" * 80)
+        lines.append("")
+        lines.append(f"Session: {session.get('name', 'N/A')} ({self.metadata.session_id[:8]}...)")
+        lines.append(f"Generated: {self._format_timestamp(self.metadata.generated_at)}")
+        lines.append(f"Engine: {self.metadata.generator} v{self.metadata.version}")
+        lines.append("")
+
+        # Summary
+        lines.append("-" * 80)
+        lines.append("SUMMARY STATISTICS")
+        lines.append("-" * 80)
+        lines.append(f"  Total Logs:     {summary.get('logs', {}).get('total', 0):>6}")
+        lines.append(f"  Total Alerts:    {summary.get('alerts', {}).get('total', 0):>6}")
+        lines.append(f"  Total Incidents: {summary.get('incidents', {}).get('total', 0):>6}")
+        lines.append("")
+
+        # Log level distribution
+        lines.append("Log Level Distribution:")
+        for level, stats in summary.get("logs", {}).get("by_level", {}).items():
+            if isinstance(stats, dict):
+                lines.append(f"  {level:12} : {stats.get('count', 0):>6} ({stats.get('percentage', 0):>5.1f}%)")
+            else:
+                lines.append(f"  {level:12} : {stats:>6}")
+        lines.append("")
+
+        # Alert severity distribution
+        lines.append("Alert Severity Distribution:")
+        for severity, count in summary.get("alerts", {}).get("by_severity", {}).items():
+            lines.append(f"  {severity:12} : {count:>6}")
+        lines.append("")
+
+        # Top Threats
+        lines.append("-" * 80)
+        lines.append("TOP THREATS")
+        lines.append("-" * 80)
+
+        from collections import Counter
+
+        threat_counts = Counter(a.get("alert_type", "UNKNOWN") for a in alerts)
+        top_threats = threat_counts.most_common(10)
+
+        if top_threats:
+            lines.append(f"{'Rank':<6} {'Threat':<25} {'Count':>8} {'Severity':<12}")
+            lines.append("-" * 60)
+            for i, (threat, count) in enumerate(top_threats, 1):
+                if count > 10:
+                    severity = "CRITICAL"
+                elif count > 5:
+                    severity = "HIGH"
+                elif count > 2:
+                    severity = "MEDIUM"
+                else:
+                    severity = "LOW"
+                lines.append(f"{i:<6} {threat:<25} {count:>8} {severity:<12}")
+        else:
+            lines.append("No threats detected.")
+        lines.append("")
+
+        # Alert Breakdown
+        lines.append("-" * 80)
+        lines.append("ALERT BREAKDOWN")
+        lines.append("-" * 80)
+
+        if alerts:
+            lines.append(f"{'Severity':<12} {'Type':<20} {'Reason':<30} {'Time'}")
+            lines.append("-" * 80)
+            for alert in alerts[:30]:
+                severity = alert.get("severity", "UNKNOWN")[:12]
+                alert_type = alert.get("alert_type", "N/A")[:20]
+                reason = alert.get("reason", "N/A")[:30]
+                timestamp = alert.get("timestamp", "N/A")[:19]
+                lines.append(f"{severity:<12} {alert_type:<20} {reason:<30} {timestamp}")
+        else:
+            lines.append("No alerts.")
+        lines.append("")
+
+        # Incidents
+        lines.append("-" * 80)
+        lines.append("INCIDENTS")
+        lines.append("-" * 80)
+
+        if incidents:
+            for inc in incidents:
+                lines.append(f"  [{inc.get('severity', 'UNKNOWN')}] {inc.get('title', 'N/A')}")
+                lines.append(f"    Status: {inc.get('status', 'open')}")
+                lines.append(f"    Created: {inc.get('created', 'N/A')[:19]}")
+                if inc.get("resolved"):
+                    lines.append(f"    Resolved: {inc.get('resolved')[:19]}")
+                lines.append("")
+        else:
+            lines.append("No incidents.")
+        lines.append("")
+
+        # Report Integrity
+        lines.append("-" * 80)
+        lines.append("REPORT INTEGRITY")
+        lines.append("-" * 80)
+        lines.append(f"SHA-256 Hash: {integrity_hash}")
+        lines.append("")
+
+        # Footer
+        lines.append("=" * 80)
+        lines.append(f"Generated by {self.metadata.generator} v{self.metadata.version}")
+        lines.append("This report is for informational purposes only.")
+        lines.append("=" * 80)
+
+        return "\n".join(lines)
+
+    def save(self, output_path: Path) -> Path:
+        """Save text report to file."""
+        content = self.generate()
+
+        # Compute integrity hash
+        integrity_hash = self.compute_integrity_hash(content)
+        self.data["integrity_hash"] = integrity_hash
+
+        # Regenerate with hash in content
+        content = content.replace(integrity_hash, integrity_hash)
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding="utf-8")
+
+        logger.info(f"Text report saved to: {output_path}")
+        return output_path

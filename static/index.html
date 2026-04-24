@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline SIEM Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap"
+    rel="stylesheet" />
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #F0F2F6;
+      --sidebar: #FAFAFA;
+      --card: #FFFFFF;
+      --border: #E0E0E0;
+      --text: #31333F;
+      --muted: #6B7280;
+      --accent: #FF4B4B;
+      --accent2: #0068C9;
+      --font: 'Source Sans Pro', sans-serif;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────────── */
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 220px;
+      min-width: 220px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 20px 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+
+    .sidebar-logo h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-logo h2 span {
+      font-size: 22px;
+    }
+
+    .sidebar-logo small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 20px;
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 13px;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+    }
+
+    .nav-item:hover {
+      background: #eef0f4;
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: #EEF2FA;
+      color: var(--accent2);
+      border-left-color: var(--accent2);
+    }
+
+    .nav-item .icon {
+      font-size: 16px;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 16px 20px 4px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* Main area */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top bar */
+    .topbar {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+    }
+
+    .topbar h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .status-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: #e9ecef;
+    }
+
+    /* Page content */
+    .page {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px;
+    }
+
+    /* ── Stat cards ─────────────────────────────────────────────────────────── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+    }
+
+    .stat-sub {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Cards ──────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-header h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .card-meta {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Tabs ────────────────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--card);
+      padding: 0 20px;
+      margin-bottom: 20px;
+      border-radius: var(--radius) var(--radius) 0 0;
+      border: 1px solid var(--border);
+      border-bottom: none;
+    }
+
+    .tab-btn {
+      padding: 11px 18px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+    }
+
+    .tab-btn.active {
+      color: var(--accent2);
+      border-bottom-color: var(--accent2);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    /* ── Table ───────────────────────────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      background: #F8F9FB;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      text-align: left;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #F0F2F6;
+      transition: background .1s;
+      cursor: pointer;
+    }
+
+    tbody tr:hover {
+      background: #EEF2FA;
+    }
+
+    tbody tr.row-selected {
+      background: #dbeafe;
+      outline: 2px solid var(--accent2);
+      outline-offset: -2px;
+    }
+
+    tbody td {
+      padding: 8px 14px;
+      vertical-align: top;
+      color: var(--text);
+    }
+
+    tbody td:first-child {
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @keyframes rowFlash {
+      from {
+        background: #fef9e7;
+      }
+
+      to {
+        background: transparent;
+      }
+    }
+
+    .row-flash {
+      animation: rowFlash 1.4s ease-out;
+    }
+
+    /* ── Live badge ──────────────────────────────────────────────────────────── */
+    .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #198754;
+      margin-right: 4px;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .3;
+      }
+    }
+
+    /* ── Empty state ──────────────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+   AI CHAT WIDGET
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+    /* Floating toggle button */
+    #chat-toggle {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 1000;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--accent2);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 22px;
+      box-shadow: 0 4px 16px rgba(0, 104, 201, .35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    #chat-toggle:hover {
+      transform: scale(1.08);
+      box-shadow: 0 6px 20px rgba(0, 104, 201, .45);
+    }
+
+    /* Chat panel */
+    #chat-panel {
+      position: fixed;
+      bottom: 92px;
+      right: 28px;
+      z-index: 999;
+      width: 380px;
+      height: 540px;
+      background: var(--card);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, .14);
+      display: flex;
+      flex-direction: column;
+      transition: opacity .2s, transform .2s;
+    }
+
+    #chat-panel.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(12px);
+    }
+
+    /* Chat header */
+    .chat-header {
+      background: var(--accent2);
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 14px 14px 0 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .chat-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chat-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .chat-header-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .chat-header-sub {
+      font-size: 11px;
+      opacity: .8;
+    }
+
+    .chat-minimize {
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 18px;
+      opacity: .8;
+      line-height: 1;
+      padding: 2px 4px;
+    }
+
+    .chat-minimize:hover {
+      opacity: 1;
+    }
+
+    /* Context lock banner */
+    #context-banner {
+      display: none;
+      padding: 6px 14px;
+      background: #EEF2FA;
+      border-bottom: 1px solid #c7d9f5;
+      font-size: 11px;
+      color: var(--accent2);
+      font-weight: 600;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    #context-banner.visible {
+      display: flex;
+    }
+
+    #context-clear {
+      margin-left: auto;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--accent2);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 0 2px;
+      line-height: 1;
+    }
+
+    #context-clear:hover {
+      color: var(--accent);
+    }
+
+    /* Messages area */
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      max-width: 88%;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .msg.assistant {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .msg-bubble {
+      padding: 9px 13px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .msg.user .msg-bubble {
+      background: var(--accent2);
+      color: #fff;
+      border-bottom-right-radius: 3px;
+    }
+
+    .msg.assistant .msg-bubble {
+      background: #F0F2F6;
+      color: var(--text);
+      border-bottom-left-radius: 3px;
+    }
+
+    .msg.assistant.thinking .msg-bubble {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .msg-meta {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* Input row */
+    .chat-input-row {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      flex-shrink: 0;
+      border-radius: 0 0 14px 14px;
+    }
+
+    #chat-input {
+      flex: 1;
+      resize: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 11px;
+      font-family: var(--font);
+      font-size: 13px;
+      color: var(--text);
+      background: var(--bg);
+      max-height: 90px;
+      overflow-y: auto;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    #chat-input:focus {
+      border-color: var(--accent2);
+    }
+
+    #chat-send {
+      background: var(--accent2);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      font-size: 16px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s;
+    }
+
+    #chat-send:hover {
+      background: #0057ab;
+    }
+
+    #chat-send:disabled {
+      background: #a0bfe0;
+      cursor: not-allowed;
+    }
+
+    /* Welcome message */
+    .chat-welcome {
+      text-align: center;
+      padding: 24px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .chat-welcome .icon {
+      font-size: 36px;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .chat-welcome strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .stat-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      #chat-panel {
+        width: calc(100vw - 32px);
+        right: 16px;
+      }
+    }
+
+    /* ── Alert flash ─────────────────────────────────────────────────────────── */
+    @keyframes alertFlash {
+
+      0%,
+      100% {
+        background: var(--card);
+      }
+
+      25%,
+      75% {
+        background: #ffe0e0;
+      }
+
+      50% {
+        background: #ffb3b3;
+      }
+    }
+
+    .topbar-flash {
+      animation: alertFlash 0.8s ease-in-out;
+    }
+
+    /* ── Data management modal ──────────────────────────────────────────────── */
+    .dm-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      background: rgba(10, 10, 20, .55);
+      backdrop-filter: blur(3px);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dm-modal-backdrop.open {
+      display: flex;
+    }
+
+    .dm-modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 32px 28px 24px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+      animation: modalIn .18s ease;
+    }
+
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: translateY(-12px) scale(.97);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .dm-modal h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      color: #1a1a2e;
+    }
+
+    .dm-modal p {
+      margin: 0 0 24px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.5;
+    }
+
+    .dm-modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .dm-btn {
+      padding: 8px 18px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity .15s;
+    }
+
+    .dm-btn:hover {
+      opacity: .85;
+    }
+
+    .dm-btn-cancel {
+      background: #f0f2f6;
+      color: #333;
+    }
+
+    .dm-btn-danger {
+      background: #dc3545;
+      color: #fff;
+    }
+
+    /* ── Toolbar action buttons ─────────────────────────────────────────────── */
+    .data-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 13px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background .15s, border-color .15s;
+    }
+
+    .action-btn-clear {
+      background: #fff0f0;
+      color: #c0392b;
+      border-color: #f5c6cb;
+    }
+
+    .action-btn-clear:hover {
+      background: #fde8e8;
+    }
+
+    .action-btn-export {
+      background: #eef6ff;
+      color: #0068C9;
+      border-color: #b8d9f8;
+    }
+
+    .action-btn-export:hover {
+      background: #daeeff;
+    }
+
+    /* ── Serial number column ──────────────────────────────────────────────── */
+    .serial-col {
+      width: 42px;
+      min-width: 42px;
+      text-align: right !important;
+      padding: 8px 8px 8px 4px !important;
+      font-variant-numeric: tabular-nums;
+      color: #9ca3af;
+      font-size: 11px;
+      user-select: none;
+    }
+
+    /* ── Checkbox column ────────────────────────────────────────────────────── */
+    .cb-col {
+      width: 32px;
+      text-align: center !important;
+      padding: 0 6px !important;
+    }
+
+    .row-cb {
+      cursor: pointer;
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent2);
+    }
+
+    .select-all-cb {
+      cursor: pointer;
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent2);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════
+       TOAST NOTIFICATION SYSTEM
+       Replaces browser Notification() API entirely.
+       Fixed top-right, stacks downward, each toast auto-dismisses after 6 s.
+       ══════════════════════════════════════════════════════════════════════════ */
+    #toast-container {
+      position: fixed;
+      top: 68px;
+      /* just below the topbar */
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 360px;
+      width: 100%;
+      pointer-events: none;
+      /* container itself doesn't block clicks */
+    }
+
+    /* Each toast re-enables pointer events so the close button works */
+    #toast-container .siem-toast {
+      pointer-events: all;
+    }
+
+    @keyframes toastSlideIn {
+      from {
+        opacity: 0;
+        transform: translateX(40px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes toastSlideOut {
+      from {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      to {
+        opacity: 0;
+        transform: translateX(40px);
+      }
+    }
+
+    /* Hover state for the dismiss (✕) button inside toasts */
+    #toast-container button:hover {
+      color: #ccc !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="layout">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <h2><span>🛡️</span> Offline SIEM</h2>
+        <small>Security Information &amp; Event Management</small>
+      </div>
+      <nav>
+        <div class="nav-item active" id="nav-live" onclick="switchView('live')">
+          <span class="icon">📡</span> Live Monitor
+        </div>
+        <div class="nav-item" id="nav-forensic" onclick="switchView('forensic')">
+          <span class="icon">🔬</span> Forensic Lab
+        </div>
+      </nav>
+      <div class="sidebar-footer">Fully offline · Air-gapped</div>
+    </aside>
+
+    <!-- ── Main ────────────────────────────────────────────────────────────── -->
+    <div class="main">
+
+      <div class="topbar">
+        <h1 id="topbar-title">SOC Dashboard</h1>
+        <div class="topbar-right">
+          <div class="data-actions">
+            <span style="display:flex;align-items:center;gap:4px;">
+              <label style="font-size:11px;color:#6B7280;font-weight:600;white-space:nowrap;">#</label>
+              <input id="export-from" type="number" min="1" placeholder="From" title="Export from row #" style="width:62px;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;
+                       font-size:12px;font-family:var(--font);color:#374151;background:#fff;
+                       text-align:center;">
+              <span style="font-size:11px;color:#9ca3af;">–</span>
+              <input id="export-to" type="number" min="1" placeholder="To" title="Export to row #" style="width:62px;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;
+                       font-size:12px;font-family:var(--font);color:#374151;background:#fff;
+                       text-align:center;">
+            </span>
+            <button class="action-btn action-btn-export" onclick="exportSelected()">⬇ Export</button>
+            <button class="action-btn action-btn-clear" onclick="openClearModal()">🗑 Clear Logs</button>
+          </div>
+          <span class="status-pill">
+            <span class="live-dot"></span>
+            <span id="connection-status" style="color:#198754;">Connecting…</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="page">
+
+        <!-- ══════════════════════════════════════════════════════════════════
+           LIVE MONITOR VIEW
+           ══════════════════════════════════════════════════════════════════ -->
+        <div id="live-view">
+
+          <!-- Stat cards -->
+          <div class="stat-row">
+            <div class="stat-card">
+              <div class="stat-label">Total Logs</div>
+              <div class="stat-value" id="stat-logs">0</div>
+              <div class="stat-sub">ingested this session</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Alerts</div>
+              <div class="stat-value" id="stat-alerts">0</div>
+              <div class="stat-sub">detected threats</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Incidents</div>
+              <div class="stat-value" id="stat-incidents">0</div>
+              <div class="stat-sub">open cases</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Live Events</div>
+              <div class="stat-value" id="stat-liveEvents">0</div>
+              <div class="stat-sub">received via WebSocket</div>
+            </div>
+          </div>
+
+          <!-- Tab bar -->
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="logs">📋 Live Logs</button>
+            <button class="tab-btn" data-tab="alerts">🚨 Alerts</button>
+            <button class="tab-btn" data-tab="incidents">📁 Incidents</button>
+          </div>
+
+          <!-- Logs panel -->
+          <div id="panel-logs" class="tab-panel" style="display:block;">
+            <div class="card">
+              <div class="card-header">
+                <h3>Windows Event Logs</h3>
+                <span class="card-meta">Click a row to pin it as AI context · Security rows in red</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="cb-col"><input type="checkbox" class="select-all-cb" id="logs-select-all"
+                          title="Select all" onchange="toggleSelectAll('logs-tbody',this.checked)"></th>
+                      <th style="width:42px;text-align:right;padding-right:8px;">#</th>
+                      <th>Timestamp</th>
+                      <th>Level</th>
+                      <th>Source / Channel</th>
+                      <th>Logger</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody id="logs-tbody">
+                    <tr>
+                      <td colspan="5" class="empty-state">Loading logs…</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Alerts panel -->
+          <div id="panel-alerts" class="tab-panel">
+            <div class="card">
+              <div class="card-header">
+                <h3>Security Alerts</h3>
+                <span class="card-meta">Generated by detection engine · Click to analyse with AI</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Severity</th>
+                      <th>Type</th>
+                      <th>Reason</th>
+                      <th>Description</th>
+                      <th>Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody id="alerts-tbody">
+                    <tr>
+                      <td colspan="6" class="empty-state">Loading alerts…</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Incidents panel -->
+          <div id="panel-incidents" class="tab-panel">
+            <div class="card">
+              <div class="card-header">
+                <h3>Incidents</h3>
+                <span class="card-meta">Lifecycle: NEW → ACKNOWLEDGED → RESOLVED</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Title</th>
+                      <th>Severity</th>
+                      <th>Status</th>
+                      <th># Alerts</th>
+                      <th>Created</th>
+                      <th>Resolved</th>
+                    </tr>
+                  </thead>
+                  <tbody id="incidents-tbody">
+                    <tr>
+                      <td colspan="7" class="empty-state">Loading incidents…</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /live-view -->
+
+        <!-- ══════════════════════════════════════════════════════════════════
+           FORENSIC LAB VIEW
+           ══════════════════════════════════════════════════════════════════ -->
+        <div id="forensic-view" style="display:none;">
+
+          <!-- Drop / upload zone -->
+          <div class="card" style="margin-bottom:20px;">
+            <div class="card-header">
+              <h3>🔬 Log Forensic Lab</h3>
+              <span class="card-meta">Upload a file to analyse · Supports .log .txt .json .csv .syslog</span>
+            </div>
+            <div id="forensic-dropzone" style="margin:16px 20px;padding:32px;border:2px dashed var(--border);
+                      border-radius:var(--radius);text-align:center;cursor:pointer;
+                      transition:border-color .2s,background .2s;"
+              ondragover="event.preventDefault();this.style.borderColor='var(--accent2)';this.style.background='#EEF2FA';"
+              ondragleave="this.style.borderColor='var(--border)';this.style.background='';"
+              ondrop="forensicDrop(event)" onclick="document.getElementById('upload-input').click()">
+              <div style="font-size:36px;margin-bottom:8px;">📂</div>
+              <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Drop a log file here or click to browse
+              </div>
+              <div style="font-size:12px;color:var(--muted);">.log · .txt · .json · .csv · .syslog</div>
+            </div>
+            <div id="upload-status"
+              style="font-size:12px;color:var(--muted);padding:0 20px 14px;min-height:18px;word-break:break-word;">
+            </div>
+          </div>
+
+          <!-- Imported log history -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Imported Log History</h3>
+              <span class="card-meta" id="forensic-count">0 entries · Click a row to pin as AI context</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th class="cb-col"><input type="checkbox" class="select-all-cb" id="forensic-select-all"
+                        title="Select all" onchange="toggleSelectAll('forensic-tbody',this.checked)"></th>
+                    <th style="width:42px;text-align:right;padding-right:8px;">#</th>
+                    <th>Timestamp</th>
+                    <th>Level</th>
+                    <th>Source File</th>
+                    <th>Logger</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody id="forensic-tbody">
+                  <tr>
+                    <td colspan="5" class="empty-state">No uploaded logs yet — drop a file above.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /forensic-view -->
+
+      </div><!-- /page -->
+    </div><!-- /main -->
+  </div><!-- /layout -->
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+     TOAST CONTAINER — all in-dashboard security notifications appear here.
+     (browser Notification() API is NOT used anywhere in this app)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+     AI CHAT WIDGET
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Floating toggle button -->
+  <button id="chat-toggle" title="AI SOC Assistant">🤖</button>
+
+  <!-- Chat panel -->
+  <div id="chat-panel" class="hidden">
+    <!-- Header -->
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="chat-avatar">🧠</div>
+        <div>
+          <div class="chat-header-title">SOC AI Assistant</div>
+          <div class="chat-header-sub">Powered by Phi-3 Mini · Fully Offline</div>
+        </div>
+      </div>
+      <button class="chat-minimize" id="chat-close" title="Minimize">╲╱</button>
+    </div>
+
+    <!-- Context lock banner (shown when a row is pinned) -->
+    <div id="context-banner">
+      <span>📌</span>
+      <span id="context-label">Log context locked</span>
+      <button id="context-clear" title="Clear context">✕</button>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages">
+      <div class="chat-welcome">
+        <span class="icon">🛡️</span>
+        <strong>Senior SOC Analyst AI</strong>
+        Ask me about any log or alert. Click a table row first to pin it as context.
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-row">
+      <textarea id="chat-input" rows="1" placeholder="Ask about a log, threat, or event…"></textarea>
+      <button id="chat-send" title="Send">➤</button>
+    </div>
+  </div>
+
+  <!-- Alert sound: inline Base64 WAV beep — works fully offline, no CDN needed -->
+  <audio id="alert-sound" preload="auto">
+    <source
+      src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEARmQAAESAAABAAgAZGF0YUoGAACBhYqFbF1fdJiVj4t5bGl2iZGOi4Z7dHuMlpGQkIt/eHqGk5KSkpCKhYB/g4yTk5OTkIuEf3+Djpabm5qXkoqDf3+Ejo+Rko+Mh4J/gYeLj5CQj4yIhICAhIqPkZGQjomEf3+ChI2RlJSTkYyGgH+BhoyTl5mYlpGLhH9/goiOkpSUkpCLhX9/gomQlJiZmJWSjYWAf4GHjZKVlpWTj4qEf3+CiI+Ul5iYlpKNhoCAgYiPlZiZmJWRjIWAf4GIj5SXmJiWko2GgH+CiI+TlpeXlpOMhoCAgomQlZiZmJaRjYaAgIKJkJWYmZiWko2GgH+CiZCVmJmZl5OMhoCAgoqRlZmamZeUjoiAgIKLkpaampqYlI+JgYCCi5OXm5uamJSOiICAgouTmJubm5mVkIqBgIONlJmbm5uZlpCKgYCDjJSZnJycmpeSjYaAgISNlZqcnJuZlpGLhICEjo+RkpKRkIyIhICEjo+RkpKRkIyIhICEjo+RkpKRkIyIhICEjo+RkpKRkIyIhA=="
+      type="audio/wav">
+  </audio>
+
+  <!-- hidden file input shared between forensic dropzone and uploader -->
+  <input type="file" id="upload-input" accept=".log,.txt,.json,.csv,.syslog" style="display:none" />
+
+  <script src="/static/app.js"></script>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+     CLEAR LOGS CONFIRMATION MODAL
+     ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="dm-modal-backdrop" id="clear-modal-backdrop" onclick="closeClearModal(event)">
+    <div class="dm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title">🗑 Clear All Data?</h2>
+      <p>
+        This will permanently delete <strong>all logs, alerts, and incidents</strong>
+        from the database. The action is <strong>irreversible</strong> and cannot be undone.
+      </p>
+      <div class="dm-modal-actions">
+        <button class="dm-btn dm-btn-cancel" onclick="closeClearModal()">Cancel</button>
+        <button class="dm-btn dm-btn-danger" id="clear-confirm-btn" onclick="confirmClear()">
+          Yes, delete everything
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

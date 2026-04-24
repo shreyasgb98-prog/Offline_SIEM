@@ -1,0 +1,50 @@
+debug: false
+
+# Offline SIEM Configuration
+app:
+  title: "Offline SIEM"
+  page_icon: "🛡️"
+  layout: "wide"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Detection Engine Configuration
+detection:
+  # Brute Force Detection
+  brute_force:
+    threshold: 5  # Absolute threshold for alerts
+    window_seconds: 300  # 5 minutes analysis window
+    severity_threshold: 20  # High severity threshold
+    moving_avg_window: 10  # Baseline window size
+    deviation_threshold: 2.0  # Standard deviations for anomaly
+    min_baseline_events: 50  # Minimum events for statistics
+
+  # Anomaly Detection
+  anomaly:
+    z_score_threshold: 3.0  # Z-score for anomaly detection
+    time_window_minutes: 10  # Analysis window
+    baseline_window_hours: 24  # Hours for baseline
+    min_baseline_samples: 50  # Minimum samples for statistics
+
+  # Threat Intelligence
+  threat_intel:
+    intel_dir: "data/threat_intel"  # Directory for threat intel files
+    auto_update: false  # Auto-update from external sources
+
+# Ingestion Configuration
+ingestion:
+  chunk_size: 8192  # Chunk size for streaming (bytes)
+  max_memory_mb: 512  # Maximum memory usage (MB)
+
+# Search Configuration
+search:
+  index_enabled: true  # Enable search indexing
+  max_index_size_mb: 100  # Maximum index size
+
+# Security Configuration
+security:
+  integrity_check: true  # Enable file integrity verification
+  hash_algorithm: "SHA-256"  # Hash algorithm for integrity
+  signing_key: null  # Optional HMAC key for report signing

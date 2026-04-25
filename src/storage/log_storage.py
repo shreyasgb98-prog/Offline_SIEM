@@ -45,8 +45,8 @@ class LogStorage:
                     """
                     INSERT INTO logs (
                         session_id, timestamp, level, message, logger, source,
-                        function, line_number, metadata, raw_line, format, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        function, line_number, metadata, raw_line, format, ip_address, latitude, longitude, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session_id,
@@ -60,6 +60,9 @@ class LogStorage:
                         json.dumps(log.metadata),
                         log.raw_line,
                         log.format,
+                        log.ip_address,
+                        log.latitude,
+                        log.longitude,
                         now,
                     ),
                 )
@@ -125,6 +128,9 @@ class LogStorage:
             function=row["function"] or "",
             line_number=row["line_number"],
             metadata=json.loads(row["metadata"] or "{}"),
+            ip_address=row["ip_address"],
+            latitude=row["latitude"],
+            longitude=row["longitude"],
             raw_line=row["raw_line"] or "",
             format=row["format"] or "",
         )

@@ -16,7 +16,7 @@ class PlainTextParser(BaseParser):
     """
 
     # IP address pattern
-    IP_PATTERN = re.compile(r"\b\d{1,3}(\.\d{1,3}){3}\b")
+    IP_PATTERN = re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b")
 
     # Pattern: YYYY-MM-DD HH:MM:SS,ms LEVEL [logger] message
     ISO_PATTERN = re.compile(
@@ -101,8 +101,14 @@ class PlainTextParser(BaseParser):
         message   = groups.get("message", raw_line)
         logger    = groups.get("logger", "")
 
-        ip_match  = self.IP_PATTERN.search(raw_line)
-        metadata  = {"ip": ip_match.group(0)} if ip_match else {}
+        ip_address = self._extract_ip(raw_line)
+        latitude, longitude = None, None
+        if ip_address:
+            from src.geoip import get_geoip_location
+            latitude, longitude = get_geoip_location(ip_address)
+
+        source_ip = ip_address or "-"
+        metadata = {"source_ip": source_ip}
 
         return NormalizedLog(
             timestamp=timestamp,
@@ -113,12 +119,21 @@ class PlainTextParser(BaseParser):
             raw_line=raw_line,
             format="text",
             metadata=metadata,
+            ip_address=ip_address,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     def _create_generic_entry(self, raw_line: str) -> NormalizedLog:
         """Create a generic NormalizedLog for unstructured / unrecognised lines."""
-        ip_match = self.IP_PATTERN.search(raw_line)
-        metadata = {"ip": ip_match.group(0)} if ip_match else {}
+        ip_address = self._extract_ip(raw_line)
+        latitude, longitude = None, None
+        if ip_address:
+            from src.geoip import get_geoip_location
+            latitude, longitude = get_geoip_location(ip_address)
+
+        source_ip = ip_address or "-"
+        metadata = {"source_ip": source_ip}
 
         return NormalizedLog(
             timestamp=datetime.now(),
@@ -129,6 +144,9 @@ class PlainTextParser(BaseParser):
             raw_line=raw_line,
             format="text",
             metadata=metadata,
+            ip_address=ip_address,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -174,3 +192,13 @@ class PlainTextParser(BaseParser):
             return LogLevel(level_str)
         except ValueError:
             return LogLevel.UNKNOWN
+
+    def _extract_ip(self, text: str) -> str | None:
+        """Extract an IPv4 address while ignoring local and loopback values."""
+        ip_match = self.IP_PATTERN.search(text)
+        if not ip_match:
+            return None
+        ip_address = ip_match.group(0)
+        if ip_address == "0.0.0.0" or ip_address.startswith("127."):
+            return None
+        return ip_address

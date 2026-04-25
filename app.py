@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import sqlite3
 import threading
 from contextlib import asynccontextmanager
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 BASE_DIR    = Path(__file__).parent
 DB_PATH     = BASE_DIR / "data" / "offline_siem.db"
 STATIC      = BASE_DIR / "static"
-MODEL_PATH  = BASE_DIR / "models" / "Phi-3-mini-4k-instruct-q4_k_m.gguf"
+MODEL_PATH  = BASE_DIR / "models" / "Phi-3-mini-4k-instruct-q4.gguf"
 UPLOAD_DIR  = BASE_DIR / "uploads"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -69,10 +70,10 @@ def _load_llm():
                 verbose=False,
             )
             log.info("LLM loaded successfully.")
-        except ImportError:
-            log.warning("llama-cpp-python not installed — AI assistant disabled.")
+        except ImportError as exc:
+            log.exception("llama-cpp-python not installed — AI assistant disabled.")
         except Exception as exc:
-            log.error("Failed to load LLM: %s", exc)
+            log.exception("Failed to load LLM")
     return _llm
 
 
@@ -80,7 +81,7 @@ def _run_inference(user_message: str, log_context: dict | None) -> str:
     """Build prompt and run inference. Runs in a thread pool."""
     llm = _load_llm()
     if llm is None:
-        return ("AI assistant is offline. Place `phi-3-mini-4k-instruct-q4.gguf` "
+        return ("AI assistant is offline. Place `./models/Phi-3-mini-4k-instruct-q4.gguf` "
                 "in the `models/` folder and install `llama-cpp-python`.")
 
     # Build context block if a log row was pinned
@@ -147,8 +148,9 @@ def _insert_log(row: dict) -> None:
     sql = """
         INSERT INTO logs
             (session_id, timestamp, level, message, logger, source,
-             function, line_number, metadata, raw_line, format, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             function, line_number, metadata, raw_line, format,
+             source_ip, ip_address, latitude, longitude, log_source, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """
     now = datetime.now().isoformat()
     with _db_lock:
@@ -165,9 +167,114 @@ def _insert_log(row: dict) -> None:
                 json.dumps(row.get("metadata", {})),
                 row.get("raw_line", ""),
                 row.get("format", "windows_event"),
+                row.get("source_ip"),
+                row.get("ip_address"),
+                row.get("latitude"),
+                row.get("longitude"),
+                row.get("log_source", "live"),
                 now,
             ))
             conn.commit()
+        finally:
+            conn.close()
+
+
+def init_db() -> None:
+    """Create all required tables and indexes. Safe to call repeatedly."""
+    with _db_lock:
+        conn = _get_conn()
+        try:
+            cur = conn.cursor()
+
+            # ── logs ─────────────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS logs (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id   TEXT NOT NULL,
+                    timestamp    TEXT NOT NULL,
+                    level        TEXT,
+                    message      TEXT,
+                    logger       TEXT,
+                    source       TEXT,
+                    function     TEXT,
+                    line_number  INTEGER,
+                    metadata     TEXT,
+                    raw_line     TEXT NOT NULL,
+                    format       TEXT,
+                    source_ip    TEXT DEFAULT '-',
+                    ip_address   TEXT,
+                    latitude     REAL,
+                    longitude    REAL,
+                    log_source   TEXT DEFAULT 'live',
+                    created_at   TEXT NOT NULL
+                )
+            """)
+
+            # ── alerts ───────────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id      TEXT NOT NULL,
+                    alert_id        TEXT NOT NULL,
+                    alert_type      TEXT NOT NULL,
+                    severity        TEXT NOT NULL,
+                    reason          TEXT NOT NULL,
+                    description     TEXT,
+                    timestamp       TEXT NOT NULL,
+                    source_logs     TEXT,
+                    indicators      TEXT,
+                    matched_pattern TEXT,
+                    confidence      REAL,
+                    metadata        TEXT,
+                    source_ip       TEXT DEFAULT '-',
+                    created_at      TEXT NOT NULL
+                )
+            """)
+
+            # ── incidents ────────────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS incidents (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id   TEXT NOT NULL,
+                    incident_id  TEXT UNIQUE NOT NULL,
+                    title        TEXT NOT NULL,
+                    description  TEXT,
+                    severity     TEXT NOT NULL,
+                    status       TEXT DEFAULT 'open',
+                    alert_ids    TEXT,
+                    created_at   TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    resolved_at  TEXT,
+                    metadata     TEXT,
+                    source_ip    TEXT DEFAULT '-'
+                )
+            """)
+
+            # ── indexes ──────────────────────────────────────────────────
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp  ON logs(timestamp)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_session    ON logs(session_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_source     ON logs(log_source)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_alerts_session  ON alerts(session_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_session ON incidents(session_id)")
+
+            # ── column migrations (older DBs) ────────────────────────────
+            for stmt in [
+                "ALTER TABLE logs ADD COLUMN source_ip   TEXT DEFAULT '-'",
+                "ALTER TABLE logs ADD COLUMN ip_address   TEXT",
+                "ALTER TABLE logs ADD COLUMN latitude     REAL",
+                "ALTER TABLE logs ADD COLUMN longitude    REAL",
+                "ALTER TABLE logs ADD COLUMN log_source   TEXT DEFAULT 'live'",
+                "ALTER TABLE alerts ADD COLUMN source_ip  TEXT DEFAULT '-'",
+                "ALTER TABLE incidents ADD COLUMN source_ip TEXT DEFAULT '-'",
+            ]:
+                try:
+                    cur.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass  # column already exists
+
+            conn.commit()
+            log.info("Database schema initialized / verified — %s", DB_PATH)
         finally:
             conn.close()
 
@@ -242,6 +349,14 @@ def _poll_windows_once(loop: asyncio.AbstractEventLoop) -> None:
                     except Exception:
                         msg = str(getattr(rec, "StringInserts", "") or "")
 
+                    full_msg = msg.strip()
+                    source_ip = None
+                    match = re.search(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", full_msg)
+                    if match:
+                        candidate = match.group(0)
+                        if candidate not in {"0.0.0.0", "-"} and not candidate.startswith("127."):
+                            source_ip = candidate
+
                     level_map = {1: "ERROR", 2: "WARNING", 4: "INFO",
                                  8: "DEBUG", 16: "ERROR", 32: "INFO"}
                     level = level_map.get(getattr(rec, "EventType", 4), "INFO")
@@ -250,12 +365,14 @@ def _poll_windows_once(loop: asyncio.AbstractEventLoop) -> None:
                         "session_id": "winmon",
                         "timestamp":  ts,
                         "level":      level,
-                        "message":    msg.strip()[:500],
+                        "message":    full_msg,
                         "logger":     getattr(rec, "SourceName", channel),
                         "source":     channel,
                         "metadata":   {"event_id": event_id, "channel": channel},
-                        "raw_line":   f"[{channel}] EventID={event_id} {msg[:200]}",
+                        "raw_line":   f"[{channel}] EventID={event_id} {full_msg[:200]}",
                         "format":     "windows_event",
+                        "source_ip":  source_ip,
+                        "log_source": "live",
                     }
                     try:
                         _insert_log(row)
@@ -294,6 +411,7 @@ async def lifespan(app: FastAPI):
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    init_db()
     task = asyncio.create_task(monitor_windows_logs())
     log.info("SIEM backend ready — DB: %s", DB_PATH)
     yield
@@ -332,6 +450,7 @@ async def get_logs(limit: int = 500, source: str | None = None, level: str | Non
     params.append(limit)
     rows = _query(sql, tuple(params))
     return JSONResponse({"count": len(rows), "logs": rows})
+
 
 
 @app.get("/api/alerts")
@@ -395,6 +514,7 @@ async def upload_log(file: UploadFile = File(...)):
         for entry in ingestor.ingest_content(content_str, filename=safe_name):
             _lvl = getattr(entry, "level", None)
             _lvl_str = (_lvl.value if hasattr(_lvl, "value") else str(_lvl or "INFO")).upper()
+            source_ip = getattr(entry, "metadata", {}).get("source_ip") or getattr(entry, "ip_address", None)
             row = {
                 "session_id": "upload",
                 "timestamp":  getattr(entry, "timestamp", None) or datetime.now().isoformat(),
@@ -405,6 +525,11 @@ async def upload_log(file: UploadFile = File(...)):
                 "metadata":   getattr(entry, "metadata", {}) or {},
                 "raw_line":   getattr(entry, "raw_line", "") or "",
                 "format":     getattr(entry, "format", "uploaded") or "uploaded",
+                "source_ip":  source_ip,
+                "ip_address": getattr(entry, "ip_address", None),
+                "latitude":   getattr(entry, "latitude", None),
+                "longitude":  getattr(entry, "longitude", None),
+                "log_source": "upload",
             }
             try:
                 _insert_log(row)
@@ -434,13 +559,23 @@ async def upload_log(file: UploadFile = File(...)):
     })
 
 
-# ── Forensic Lab — uploaded logs only ────────────────────────────────────────
+# ── Source-separated log endpoints ───────────────────────────────────────────
 
-@app.get("/api/logs/uploaded")
-async def get_uploaded_logs(limit: int = 500):
-    """Return only logs ingested via file upload (session_id = 'upload')."""
+@app.get("/api/logs/live")
+async def get_live_logs(limit: int = 500):
+    """Return only real-time Windows Event logs (log_source = 'live')."""
     rows = _query(
-        "SELECT * FROM logs WHERE session_id = 'upload' ORDER BY timestamp DESC LIMIT ?",
+        "SELECT * FROM logs WHERE log_source = 'live' ORDER BY timestamp DESC LIMIT ?",
+        (limit,),
+    )
+    return JSONResponse({"count": len(rows), "logs": rows})
+
+
+@app.get("/api/logs/upload")
+async def get_uploaded_logs(limit: int = 500):
+    """Return only logs ingested via file upload (log_source = 'upload')."""
+    rows = _query(
+        "SELECT * FROM logs WHERE log_source = 'upload' ORDER BY timestamp DESC LIMIT ?",
         (limit,),
     )
     return JSONResponse({"count": len(rows), "logs": rows})
@@ -449,31 +584,26 @@ async def get_uploaded_logs(limit: int = 500):
 # ── WebSocket ────────────────────────────────────────────────────────────────
 
 
-@app.delete("/api/logs/clear")
-async def clear_all_data():
-    """
-    Truncate logs, alerts, and incidents tables.
-    The DB file and schema are preserved — only row data is removed.
+@app.delete("/api/logs/clear/{source}")
+async def clear_logs_by_source(source: str):
+    """Delete logs filtered by log_source ('live' or 'upload').
 
-    FIX: VACUUM cannot run inside a transaction (SQLite constraint).
-    We commit() the DELETEs first, close, then open a second connection
-    for VACUUM so it runs in autocommit mode outside any transaction.
+    Path parameter *source* must be one of: ``live``, ``upload``.
+    Only rows matching ``log_source = ?`` are removed — everything else is preserved.
     """
     from fastapi import HTTPException
 
-    tables = ["logs", "alerts", "incidents"]
-    counts = {}
+    if source not in ("live", "upload"):
+        raise HTTPException(status_code=400, detail=f"Invalid source '{source}'. Must be 'live' or 'upload'.")
 
-    # Phase 1: DELETE rows and commit
     try:
         with _db_lock:
             conn = _get_conn()
             try:
-                for table in tables:
-                    cur = conn.execute(f"SELECT COUNT(*) FROM {table}")
-                    counts[table] = cur.fetchone()[0]
-                    conn.execute(f"DELETE FROM {table}")
-                conn.commit()          # commit BEFORE close — data is gone
+                cur = conn.execute("SELECT COUNT(*) FROM logs WHERE log_source = ?", (source,))
+                removed = cur.fetchone()[0]
+                conn.execute("DELETE FROM logs WHERE log_source = ?", (source,))
+                conn.commit()
             except Exception as exc:
                 try:
                     conn.rollback()
@@ -482,25 +612,14 @@ async def clear_all_data():
                 raise exc
             finally:
                 conn.close()
+    except HTTPException:
+        raise
     except Exception as exc:
-        log.exception("Failed to clear database tables")
-        from fastapi import HTTPException
+        log.exception("Failed to clear %s logs", source)
         raise HTTPException(status_code=500, detail=f"Clear failed: {exc}")
 
-    # Phase 2: VACUUM in a fresh connection (autocommit — required by SQLite)
-    try:
-        with _db_lock:
-            vconn = _get_conn()
-            try:
-                vconn.isolation_level = None   # enables autocommit mode
-                vconn.execute("VACUUM")
-            finally:
-                vconn.close()
-    except Exception as exc:
-        log.warning("VACUUM after clear failed (non-fatal): %s", exc)
-
-    log.info("Database cleared — removed %s", counts)
-    return JSONResponse({"status": "cleared", "removed": counts})
+    log.info("Cleared %d %s log rows", removed, source)
+    return JSONResponse({"status": "cleared", "source": source, "removed": removed})
 
 
 @app.websocket("/ws/live")

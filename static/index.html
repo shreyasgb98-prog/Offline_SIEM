@@ -7,6 +7,7 @@
   <title>Offline SIEM Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap"
     rel="stylesheet" />
+
   <style>
     /* ── Reset & base ─────────────────────────────────────────────────────────── */
     *,
@@ -111,6 +112,24 @@
       font-size: 16px;
     }
 
+    .ip-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      white-space: nowrap;
+    }
+
+    .ip-missing {
+      color: #9ca3af;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
     .sidebar-footer {
       margin-top: auto;
       padding: 16px 20px 4px;
@@ -159,6 +178,14 @@
       padding: 3px 10px;
       border-radius: 20px;
       background: #e9ecef;
+    }
+
+    #map-container {
+      height: 600px;
+      min-height: 600px;
+      background: #222;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
     }
 
     /* Page content */
@@ -916,6 +943,7 @@
         <div class="nav-item" id="nav-forensic" onclick="switchView('forensic')">
           <span class="icon">🔬</span> Forensic Lab
         </div>
+
       </nav>
       <div class="sidebar-footer">Fully offline · Air-gapped</div>
     </aside>
@@ -938,7 +966,6 @@
                        text-align:center;">
             </span>
             <button class="action-btn action-btn-export" onclick="exportSelected()">⬇ Export</button>
-            <button class="action-btn action-btn-clear" onclick="openClearModal()">🗑 Clear Logs</button>
           </div>
           <span class="status-pill">
             <span class="live-dot"></span>
@@ -990,7 +1017,10 @@
             <div class="card">
               <div class="card-header">
                 <h3>Windows Event Logs</h3>
-                <span class="card-meta">Click a row to pin it as AI context · Security rows in red</span>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <span class="card-meta">Click a row to pin it as AI context · Security rows in red</span>
+                  <button class="action-btn action-btn-clear" id="clear-live-btn">🗑 Clear Live Logs</button>
+                </div>
               </div>
               <div class="table-wrap">
                 <table>
@@ -1003,12 +1033,13 @@
                       <th>Level</th>
                       <th>Source / Channel</th>
                       <th>Logger</th>
+                      <th>IP ADDRESS</th>
                       <th>Message</th>
                     </tr>
                   </thead>
                   <tbody id="logs-tbody">
                     <tr>
-                      <td colspan="5" class="empty-state">Loading logs…</td>
+                      <td colspan="8" class="empty-state">Loading logs…</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1108,7 +1139,10 @@
           <div class="card">
             <div class="card-header">
               <h3>Imported Log History</h3>
-              <span class="card-meta" id="forensic-count">0 entries · Click a row to pin as AI context</span>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span class="card-meta" id="forensic-count">0 entries · Click a row to pin as AI context</span>
+                <button class="action-btn action-btn-clear" id="clear-upload-btn">🗑 Clear Uploaded Logs</button>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
@@ -1121,12 +1155,13 @@
                     <th>Level</th>
                     <th>Source File</th>
                     <th>Logger</th>
+                    <th>IP ADDRESS</th>
                     <th>Message</th>
                   </tr>
                 </thead>
                 <tbody id="forensic-tbody">
                   <tr>
-                    <td colspan="5" class="empty-state">No uploaded logs yet — drop a file above.</td>
+                    <td colspan="8" class="empty-state">No uploaded logs yet — drop a file above.</td>
                   </tr>
                 </tbody>
               </table>
@@ -1134,6 +1169,8 @@
           </div>
 
         </div><!-- /forensic-view -->
+
+
 
       </div><!-- /page -->
     </div><!-- /main -->
@@ -1199,6 +1236,7 @@
   <!-- hidden file input shared between forensic dropzone and uploader -->
   <input type="file" id="upload-input" accept=".log,.txt,.json,.csv,.syslog" style="display:none" />
 
+
   <script src="/static/app.js"></script>
 
   <!-- ═══════════════════════════════════════════════════════════════════════
@@ -1206,15 +1244,15 @@
      ═══════════════════════════════════════════════════════════════════════ -->
   <div class="dm-modal-backdrop" id="clear-modal-backdrop" onclick="closeClearModal(event)">
     <div class="dm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <h2 id="modal-title">🗑 Clear All Data?</h2>
-      <p>
-        This will permanently delete <strong>all logs, alerts, and incidents</strong>
-        from the database. The action is <strong>irreversible</strong> and cannot be undone.
+      <h2 id="modal-title">🗑 Clear Logs?</h2>
+      <p id="clear-modal-desc">
+        This will permanently delete logs from the database.
+        The action is <strong>irreversible</strong> and cannot be undone.
       </p>
       <div class="dm-modal-actions">
         <button class="dm-btn dm-btn-cancel" onclick="closeClearModal()">Cancel</button>
-        <button class="dm-btn dm-btn-danger" id="clear-confirm-btn" onclick="confirmClear()">
-          Yes, delete everything
+        <button class="dm-btn dm-btn-danger" id="clear-confirm-btn">
+          Yes, delete
         </button>
       </div>
     </div>

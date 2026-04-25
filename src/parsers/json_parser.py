@@ -95,9 +95,11 @@ class JSONParser(BaseParser):
         metadata = {k: v for k, v in entry.items() if k not in known_fields}
 
         # Extract IP address
-        ip = self._extract_ip(entry, message)
-        if ip:
-            metadata["ip"] = ip
+        ip_address = self._extract_ip(entry, message)
+        latitude, longitude = None, None
+        if ip_address:
+            from src.geoip import get_geoip_location
+            latitude, longitude = get_geoip_location(ip_address)
 
         return NormalizedLog(
             timestamp=timestamp,
@@ -110,6 +112,9 @@ class JSONParser(BaseParser):
             metadata=metadata,
             raw_line=raw_line,
             format="json",
+            ip_address=ip_address,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     def _extract_timestamp(self, entry: dict) -> datetime:
@@ -157,18 +162,24 @@ class JSONParser(BaseParser):
     def _extract_ip(self, entry: dict, message: str) -> str | None:
         """Extract IP address from entry."""
         import re
-        ip_pattern = re.compile(r"\b\d{1,3}(\.\d{1,3}){3}\b")
+        ip_pattern = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
 
         # Check common IP fields
         for field in ["ip", "source_ip", "client_ip", "remote_ip", "host"]:
             if field in entry and isinstance(entry[field], str):
                 match = ip_pattern.search(entry[field])
                 if match:
-                    return match.group(0)
+                    ip_address = match.group(0)
+                    if ip_address == "0.0.0.0" or ip_address.startswith("127."):
+                        return None
+                    return ip_address
 
         # Check message
         match = ip_pattern.search(message)
         if match:
-            return match.group(0)
+            ip_address = match.group(0)
+            if ip_address == "0.0.0.0" or ip_address.startswith("127."):
+                return None
+            return ip_address
 
         return None

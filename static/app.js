@@ -3,11 +3,11 @@
  */
 
 const API = {
-  logs: "/api/logs?limit=200",
+  logs: "/api/logs/live?limit=200",
   alerts: "/api/alerts?limit=100",
   incidents: "/api/incidents?limit=100",
   chat: "/api/chat",
-  uploaded: "/api/logs/uploaded?limit=500",
+  upload: "/api/logs/upload?limit=500",
 };
 
 // ── Severity / level colours ────────────────────────────────────────────────
@@ -195,7 +195,7 @@ async function loadForensicLogs() {
   const count = document.getElementById("forensic-count");
   tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Loading…</td></tr>`;
   try {
-    const data = await fetch(API.uploaded).then(r => r.json());
+    const data = await fetch(API.upload).then(r => r.json());
     const logs = data.logs || [];
     tbody.innerHTML = "";
     if (!logs.length) {
@@ -218,6 +218,7 @@ function forensicDrop(event) {
   const file = event.dataTransfer.files[0];
   if (file) uploadFile(file);
 }
+
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONTEXT LOCK
@@ -267,6 +268,7 @@ function buildLogRow(logData, serialNum = null) {
     <td style="${highPriority && isSecure ? "color:#c0392b;font-weight:600;" : ""}">
       ${escHtml(logData.source || "")}</td>
     <td>${escHtml(logData.logger || "")}</td>
+    <td>${logData.source_ip ? `<span class="ip-badge">${escHtml(logData.source_ip)}</span>` : `<span class="ip-missing">-</span>`}</td>
     <td style="max-width:420px;word-break:break-word;">
       ${escHtml(truncate(logData.message || logData.raw_line || ""))}</td>
   `;
@@ -499,9 +501,18 @@ function connectWS() {
     // ── Real-time log stream ─────────────────────────────────────────────────
     if (msg.type === "new_logs" && Array.isArray(msg.data)) {
       msg.data.forEach(l => {
-        prependLogRow(l);
-        updateStat("logs");
-        updateStat("liveEvents");
+        // Only prepend live-sourced logs to the Live Monitor table
+        if (l.log_source !== "upload" && l.category !== "uploaded") {
+          prependLogRow(l);
+          updateStat("logs");
+          updateStat("liveEvents");
+        }
+
+        // If we're on the Forensic Lab view and this is an uploaded log, refresh
+        if ((l.log_source === "upload" || l.category === "uploaded")
+            && document.getElementById("forensic-view").style.display !== "none") {
+          loadForensicLogs();
+        }
 
         // RULE: Silently skip Event ID 4624 (Successful Login) — no toast, no sound
         const meta = (() => { try { return typeof l.metadata === "string" ? JSON.parse(l.metadata) : (l.metadata || {}); } catch { return {}; } })();
@@ -619,38 +630,69 @@ function initUploader() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATA MANAGEMENT — Clear & Selective Export
+// DATA MANAGEMENT — Source-targeted Clear & Selective Export
 // ════════════════════════════════════════════════════════════════════════════
 
-function openClearModal() {
+let _pendingClearSource = null; // 'live' or 'upload'
+
+function openClearModal(source) {
+  _pendingClearSource = source;
+  const title = document.getElementById("modal-title");
+  const desc  = document.getElementById("clear-modal-desc");
+  const btn   = document.getElementById("clear-confirm-btn");
+
+  if (source === "live") {
+    title.textContent = "🗑 Clear Live Logs?";
+    desc.innerHTML = "This will permanently delete all <strong>live Windows Event logs</strong> from the database. Uploaded logs will be preserved.";
+    btn.textContent = "Yes, delete live logs";
+  } else {
+    title.textContent = "🗑 Clear Uploaded Logs?";
+    desc.innerHTML = "This will permanently delete all <strong>uploaded / imported logs</strong> from the database. Live logs will be preserved.";
+    btn.textContent = "Yes, delete uploaded logs";
+  }
+
   document.getElementById("clear-modal-backdrop").classList.add("open");
-  document.getElementById("clear-confirm-btn").focus();
+  btn.focus();
 }
+
 function closeClearModal(evt) {
   if (evt && evt.target !== document.getElementById("clear-modal-backdrop")) return;
   document.getElementById("clear-modal-backdrop").classList.remove("open");
+  _pendingClearSource = null;
 }
+
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") closeClearModal();
 });
 
 async function confirmClear() {
+  if (!_pendingClearSource) return;
+  const source = _pendingClearSource;
   const btn = document.getElementById("clear-confirm-btn");
   btn.textContent = "Deleting…";
   btn.disabled = true;
+
   try {
-    const res = await fetch("/api/logs/clear", { method: "DELETE" });
+    const res = await fetch(`/api/logs/clear/${source}`, { method: "DELETE" });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
-    ["logs-tbody", "alerts-tbody", "incidents-tbody", "forensic-tbody"].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = `<tr><td colspan="10" class="empty-state">Database cleared.</td></tr>`;
-    });
-    ["logs", "alerts", "incidents", "liveEvents"].forEach(k => setStat(k, 0));
-    ["logs-select-all", "forensic-select-all"].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.checked = false;
-    });
-    showToast("Data Cleared", "All logs, alerts, and incidents have been deleted.", "info");
+    const data = await res.json();
+
+    if (source === "live") {
+      const tbody = document.getElementById("logs-tbody");
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Live logs cleared.</td></tr>`;
+      const selectAll = document.getElementById("logs-select-all");
+      if (selectAll) selectAll.checked = false;
+      setStat("logs", 0);
+      setStat("liveEvents", 0);
+      showToast("Live Logs Cleared", `${data.removed} live log entries deleted. Uploaded logs are preserved.`, "info");
+    } else {
+      const tbody = document.getElementById("forensic-tbody");
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Uploaded logs cleared.</td></tr>`;
+      const selectAll = document.getElementById("forensic-select-all");
+      if (selectAll) selectAll.checked = false;
+      showToast("Uploaded Logs Cleared", `${data.removed} uploaded log entries deleted. Live logs are preserved.`, "info");
+    }
+
     closeClearModal();
   } catch (err) {
     btn.textContent = "Error — retry";
@@ -659,7 +701,7 @@ async function confirmClear() {
     console.error("Clear failed:", err);
   } finally {
     btn.disabled = false;
-    if (btn.textContent === "Deleting…") btn.textContent = "Yes, delete everything";
+    btn.style.background = "";
   }
 }
 
@@ -770,5 +812,10 @@ document.addEventListener("DOMContentLoaded", () => {
   connectWS();
   initChatWidget();
   initUploader();
+
+  // Clear buttons — each opens the modal with its source type
+  document.getElementById("clear-live-btn").addEventListener("click", () => openClearModal("live"));
+  document.getElementById("clear-upload-btn").addEventListener("click", () => openClearModal("upload"));
+  document.getElementById("clear-confirm-btn").addEventListener("click", confirmClear);
   // NOTE: browser Notification API removed — toasts are fully in-dashboard.
 });

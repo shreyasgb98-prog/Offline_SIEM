@@ -6,7 +6,6 @@ python-multipart>=0.0.9        # required by FastAPI for UploadFile / multipart
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 pyyaml>=6.0
-
 # ── Offline AI assistant (Phi-3 Mini GGUF) ───────────────────────────────────
 # Install the build that matches your hardware:
 #

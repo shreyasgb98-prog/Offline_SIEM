@@ -24,3 +24,6 @@ Thumbs.db
 # Project specifics
 models/*.gguf
 data/*.db
+uploads/*
+!uploads/.gitkeep
+context.zip

@@ -91,10 +91,30 @@ class Database:
                     metadata TEXT,
                     raw_line TEXT NOT NULL,
                     format TEXT,
+                    source_ip TEXT DEFAULT '-',
+                    ip_address TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    log_source TEXT DEFAULT 'live',
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
             """)
+
+            # Add columns if they don't exist (for migration)
+            for col_stmt in [
+                "ALTER TABLE logs ADD COLUMN source_ip TEXT DEFAULT '-'",
+                "ALTER TABLE logs ADD COLUMN ip_address TEXT",
+                "ALTER TABLE logs ADD COLUMN latitude REAL",
+                "ALTER TABLE logs ADD COLUMN longitude REAL",
+                "ALTER TABLE logs ADD COLUMN log_source TEXT DEFAULT 'live'",
+                "ALTER TABLE alerts ADD COLUMN source_ip TEXT DEFAULT '-'",
+                "ALTER TABLE incidents ADD COLUMN source_ip TEXT DEFAULT '-'",
+            ]:
+                try:
+                    cursor.execute(col_stmt)
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
             # Alerts table
             cursor.execute("""
@@ -112,6 +132,7 @@ class Database:
                     matched_pattern TEXT,
                     confidence REAL,
                     metadata TEXT,
+                    source_ip TEXT DEFAULT '-',
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
@@ -132,6 +153,7 @@ class Database:
                     updated_at TEXT NOT NULL,
                     resolved_at TEXT,
                     metadata TEXT,
+                    source_ip TEXT DEFAULT '-',
                     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                 )
             """)
@@ -154,6 +176,7 @@ class Database:
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_session ON logs(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_logs_source ON logs(log_source)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_session ON alerts(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_incidents_session ON incidents(session_id)")

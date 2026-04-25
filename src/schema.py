@@ -49,6 +49,21 @@ class NormalizedLog:
     # Optional: additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Optional: extracted IP address
+    ip_address: str | None = None
+
+    # Optional: latitude from GeoIP
+    latitude: float | None = None
+
+    # Optional: longitude from GeoIP
+    longitude: float | None = None
+
+    # Raw log line for traceability
+    raw_line: str = ""
+
+    # Format of the log (e.g., 'text', 'json')
+    format: str = ""
+
     # Original raw line for traceability
     raw_line: str = ""
 

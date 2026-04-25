@@ -67,12 +67,24 @@ class SyslogParser(BaseParser):
             return self._create_entry(match.groupdict(), raw_line)
 
         # No match - return as unknown
+        ip_match = re.search(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", raw_line)
+        ip_address = ip_match.group(0) if ip_match else None
+        if ip_address and (ip_address == "0.0.0.0" or ip_address.startswith("127.")):
+            ip_address = None
+        latitude, longitude = None, None
+        if ip_address:
+            from src.geoip import get_geoip_location
+            latitude, longitude = get_geoip_location(ip_address)
+
         return NormalizedLog(
             timestamp=datetime.now(),
             level=LogLevel.UNKNOWN,
             message=raw_line,
             raw_line=raw_line,
             format="syslog",
+            ip_address=ip_address,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     def _create_entry(self, groups: dict, raw_line: str) -> NormalizedLog:
@@ -98,6 +110,16 @@ class SyslogParser(BaseParser):
         if priority := groups.get("priority"):
             metadata["priority"] = int(priority)
 
+        # Extract IP address from message
+        ip_match = re.search(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", message)
+        ip_address = ip_match.group(0) if ip_match else None
+        if ip_address and (ip_address == "0.0.0.0" or ip_address.startswith("127.")):
+            ip_address = None
+        latitude, longitude = None, None
+        if ip_address:
+            from src.geoip import get_geoip_location
+            latitude, longitude = get_geoip_location(ip_address)
+
         return NormalizedLog(
             timestamp=timestamp,
             level=level,
@@ -107,6 +129,9 @@ class SyslogParser(BaseParser):
             metadata=metadata,
             raw_line=raw_line,
             format="syslog",
+            ip_address=ip_address,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     def _parse_timestamp(self, groups: dict) -> datetime:
